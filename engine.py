@@ -9,9 +9,11 @@ from lib.logger import get_logger
 from lib.metrics import All_Metrics
 from tensorboardX import SummaryWriter
 import torch.nn.functional as F
+import csv
+import pandas as pd
 
 class Engine(object):
-    def __init__(self, model, loss, optimizer, train_loader, val_loader, test_loader,
+    def __init__(self,model, loss, optimizer, train_loader, val_loader, test_loader,
                  scaler, args, lr_scheduler=None):
         self.current_epoch = 0 
         super(Engine, self).__init__()
@@ -35,7 +37,7 @@ class Engine(object):
         self.logger = get_logger(args.log_dir, name=args.model, debug=args.debug)
         self.logger.info('Experiment log path in: {}'.format(args.log_dir))
          # Create a SummaryWriter for TensorBoard
-        self.writer = SummaryWriter(log_dir="/logs_gauss")
+        self.writer = SummaryWriter(log_dir="/content/AFDGCN_Garnoldi/logs_konya_şubat")
         
 
     
@@ -50,10 +52,11 @@ class Engine(object):
             label = target[..., :1].to(data.device)    # (..., 1)
             # data and target shape: B, T, N, F; output shape: B, T, N, F
             self.optimizer.zero_grad()
-            output = self.model(data)
+            output = self.model(data)#afdgcn forward 
             if self.args.real_value:
                 label = self.scaler.inverse_transform(label)
             output = output.to(label.device)
+
             loss = self.loss(output, label)
             mae = torch.abs(output - label).mean()
             rmse = torch.sqrt(F.mse_loss(output, label))
@@ -73,11 +76,10 @@ class Engine(object):
         train_epoch_mae = total_mae / self.train_per_epoch
         train_epoch_rmse = total_rmse / self.train_per_epoch
         train_epoch_mape = total_mape / self.train_per_epoch
-
         # learning rate decay
         if self.args.lr_decay:
             self.lr_scheduler.step()
-       
+        
         return train_epoch_loss,train_epoch_mae, train_epoch_rmse, train_epoch_mape
 
 
@@ -87,11 +89,21 @@ class Engine(object):
         total_val_mae = 0
         total_val_rmse = 0
         total_val_mape = 0
+        
+        y_pred = []
+        y_true = []
+        results = { 'Output': []}
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(val_dataloader):
                 data = data[..., :1]
                 label = target[..., :1].to(data.device) 
                 output = self.model(data)
+                #print("label:")
+                #print(label.shape)
+                #print("output: ")
+                #print(output.shape)
+                y_true.append(label)
+                y_pred.append(output)
                 output = output.to(label.device)
                 if self.args.real_value:
                     label = self.scaler.inverse_transform(label)
@@ -105,11 +117,23 @@ class Engine(object):
                 total_val_mae += mae.item()
                 total_val_rmse += rmse.item()
                 total_val_mape += mape.item()
+                results['Output'].extend(output.cpu().numpy())
+            y_true = self.scaler.inverse_transform(torch.cat(y_true, dim=0)).to(self.args.device)
+            if self.args.real_value:
+                y_pred = torch.cat(y_pred, dim=0).to(self.args.device).to(self.args.device)
+            else:
+                y_pred = self.scaler.inverse_transform(torch.cat(y_pred, dim=0)).to(self.args.device)
+            print("val ")
+            print(y_pred.cpu().numpy().shape)
         num_batches = len(val_dataloader)
         val_loss = total_val_loss / num_batches
         val_mae = total_val_mae / num_batches
         val_rmse = total_val_rmse / num_batches
         val_mape = total_val_mape / num_batches
+        df_results = pd.DataFrame(results)
+
+        # Save the DataFrame to a CSV file
+        df_results.to_csv('validation_results.csv', index=False)
 
         return val_loss, val_mae, val_rmse, val_mape
 
@@ -120,6 +144,8 @@ class Engine(object):
         not_improved_count = 0
         train_loss_list = []
         val_loss_list = []
+        train_mae_values = [] 
+        val_mae_values = [] 
         start_time = time.time()
         for epoch in tqdm(range(1, self.args.epochs + 1)):
             self.current_epoch = epoch
@@ -140,6 +166,7 @@ class Engine(object):
             self.writer.add_scalar('Metrics/MAE_Val', val_epoch_mae, epoch)
             self.writer.add_scalar('Metrics/RMSE_Val', val_epoch_rmse, epoch)
             self.writer.add_scalar('Metrics/MAPE_Val', val_epoch_mape, epoch)
+            val_mae_values.append(val_epoch_mae)
             t4 = time.time()
             self.logger.info('Epoch {:03d}, Train Loss: {:.4f}, Valid Loss: {:.4f}, Training Time: {:.4f} secs.'.format(epoch, train_epoch_loss, val_epoch_loss, (t2 - t1)))
             print("Inference Time: {:.4f} secs.", (t4 - t3))
@@ -161,11 +188,19 @@ class Engine(object):
                     self.logger.info("Validation performance didn\'t improve for {} epochs. "
                                     "Training stops.".format(self.args.early_stop_patience))
                     break
-            # save the best state
-            if best_state == True:
+            # save the best state  if best_state == True:
+            if True:
                 self.logger.info('Current best model saved!')
                 best_model = copy.deepcopy(self.model.state_dict())
                 torch.save(best_model, self.best_path)
+
+        with open('mae_values.csv', 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['Epoch', 'Validation MAE'])
+            for epoch, val_mae in zip(range(1, self.args.epochs + 1), val_mae_values):
+                writer.writerow([epoch, val_mae])
+
+        print("MAE values saved to mae_values.csv file.") 
 
         training_time = time.time() - start_time
         self.logger.info("Total training time: {:.4f} min, best loss: {:.6f}".format((training_time / 60), best_loss))
@@ -189,7 +224,7 @@ class Engine(object):
 
 
     @staticmethod
-    def test(model, args, data_loader, scaler, logger, path=None):
+    def test(model, args, data_loader, scaler, logger,path=None):
         if path != None:
             check_point = torch.load(path)
             state_dict = check_point['state_dict']
@@ -199,13 +234,19 @@ class Engine(object):
         model.eval()
         y_pred = []
         y_true = []
+        results = {'Output': []}
+        real_flow = {'Target': []}
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(data_loader):
                 data = data[..., :1].to(args.device)
                 label = target[..., :1].to(args.device)
                 output = model(data)
+                #results['Input'].extend(data.cpu().numpy())
+                real_flow['Target'].extend(label.cpu().numpy())
+                results['Output'].extend(output.cpu().numpy())
                 y_true.append(label)
                 y_pred.append(output)
+       
         y_true = scaler.inverse_transform(torch.cat(y_true, dim=0)).to(args.device)
         if args.real_value:
             y_pred = torch.cat(y_pred, dim=0).to(args.device).to(args.device)
@@ -214,9 +255,14 @@ class Engine(object):
         print(y_true.cpu().numpy().shape)
         # np.save('./NewNet_{}_true.npy'.format(args.dataset), y_true.cpu().numpy())
         # np.save('./NewNet_{}_pred.npy'.format(args.dataset), y_pred.cpu().numpy())
-
+        print(y_true.shape)
+        df_real_denormalized = pd.DataFrame({'Target': y_true.flatten()})
+        df_results_denormalized = pd.DataFrame({'Output': y_pred.flatten()})
+        df_real_denormalized.to_csv('real_flow.csv', index=False)
+        df_results_denormalized.to_csv('test_results.csv', index=False)
         for t in range(y_true.shape[1]):
             mae, rmse, mape = All_Metrics(y_pred[:, t, ...], y_true[:, t, ...], args.mae_thresh, args.rmse_thresh, args.mape_thresh)
+            #print(y_pred.cpu().numpy().shape)
             logger.info("Horizon {:02d}, MAE: {:.2f}, RMSE: {:.2f}, MAPE: {:.4f}%".format(t + 1, mae, rmse, mape * 100))
             # Store metric values in dictionaries
         mae, rmse, mape = All_Metrics(y_pred, y_true, args.mae_thresh, args.rmse_thresh, args.mape_thresh)
