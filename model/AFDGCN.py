@@ -407,7 +407,7 @@ class GPRGNN(torch.nn.Module):
             x = x.transpose(0, 1)
 
             # Reshape it from (5, 1216) to (5, 1, 19, 64)
-            x = x.view(x.size(0), 12, 19, 64)  # Manually reshape to (5, 1, 19, 64)
+            x = x.view(x.size(0), 12, 8, 64)  # Manually reshape to (5, 1, 19, 64)
 
             # Apply log softmax along the appropriate dimension
             x = F.log_softmax(x, dim=3)  # Assuming the last dimension (64) is the one to apply softmax to
