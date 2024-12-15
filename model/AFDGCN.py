@@ -369,8 +369,8 @@ class GPR_prop(MessagePassing):
 class GPRGNN(torch.nn.Module):
     def __init__(self, num_node, input_dim, output_dim, hidden, cheb_k, num_layers, embed_dim):
         super(GPRGNN, self).__init__()
-        self.lin1 = Linear(6144, 1)  # (input_dim, hidden) 19, 1
-        self.lin2 = Linear(1, 6144)
+        self.lin1 = Linear(512, 64)  # (input_dim, hidden) 19, 1
+        self.lin2 = Linear(64, 512)
 
         self.prop1 = GPR_prop(cheb_k, 0.5, 'PPR', None)
 
