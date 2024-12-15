@@ -207,7 +207,7 @@ class AVWDCRNN(nn.Module):  # AVWDCRNN(num_node, hidden_dim, hidden_dim, cheb_k,
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, out_dim, max_len=12):
+    def __init__(self, out_dim, max_len=1):
         super(PositionalEncoding, self).__init__()
 
         # compute the positional encodings once in log space.
