@@ -531,8 +531,8 @@ class APPNP(MessagePassing):
 class APPNP_Net(torch.nn.Module):
     def __init__(self, num_node, input_dim, output_dim, hidden, cheb_k, num_layers, embed_dim):
         super(APPNP_Net, self).__init__()
-        self.lin1 = Linear(512, 64)
-        self.lin2 = Linear(64, 512)
+        self.lin1 = Linear(19648, 64)  # (512, 64) for Konya & (1216,64) for Kcetas
+        self.lin2 = Linear(64, 19648)
         self.prop1 = APPNP(cheb_k, 0.5, 0.2, False, True, True)
         self.dropout = 0.2
         self.num_layers = num_layers
@@ -571,7 +571,8 @@ class APPNP_Net(torch.nn.Module):
         # print("After propagation, x size:", x.size())
         x = x.transpose(0, 1)
         # Reshape it from (5, 1216) to (5, 1, 19, 64) for Kcetas
-        x = x.reshape(x.size(0), 1, 8, 64)  # Manually reshape to (5, 1, 19, 64)
+        # (5, 1, 8, 64) for Konya
+        x = x.reshape(x.size(0), 1, 307, 64)  # Manually reshape to (5, 1, 19, 64)
         # print("After reshaping, x size:", x.size())
 
         # Apply log softmax along the appropriate dimension
@@ -630,9 +631,9 @@ class Model(nn.Module):
         # encoder
         self.feature_attention = feature_attention(input_dim=input_dim, output_dim=hidden_dim, kernel_size=kernel_size)
         # self.encoder = AVWDCRNN(num_node, hidden_dim, hidden_dim, cheb_k, embed_dim, num_layers)
-        #self.encoder = APPNP_Net(num_node, input_dim, output_dim, hidden_dim, cheb_k, num_layers, embed_dim)
+        self.encoder = APPNP_Net(num_node, input_dim, output_dim, hidden_dim, cheb_k, num_layers, embed_dim)
         #self.encoder = GARNOLDI(num_node, input_dim, output_dim, hidden_dim, cheb_k, num_layers, embed_dim)        
-        self.encoder = GPRGNN(num_node,input_dim,output_dim, hidden_dim, cheb_k,num_layers,embed_dim)
+        #self.encoder = GPRGNN(num_node,input_dim,output_dim, hidden_dim, cheb_k,num_layers,embed_dim)
         self.GraphAttentionLayer = GraphAttentionLayer(hidden_dim, hidden_dim, A, dropout=0.5, alpha=0.2, concat=True)
         self.MultiHeadAttention = MultiHeadAttention(embed_size=hidden_dim, heads=heads)
         # predict
