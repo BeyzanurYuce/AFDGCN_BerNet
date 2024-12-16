@@ -37,7 +37,7 @@ class Engine(object):
         self.logger = get_logger(args.log_dir, name=args.model, debug=args.debug)
         self.logger.info('Experiment log path in: {}'.format(args.log_dir))
          # Create a SummaryWriter for TensorBoard
-        self.writer = SummaryWriter(log_dir="/content/AFDGCN_Garnoldi/logs_konya_şubat")
+        self.writer = SummaryWriter(log_dir="/content/AFDGCN_BernNet/logs_konya_şubat")
         
 
     
